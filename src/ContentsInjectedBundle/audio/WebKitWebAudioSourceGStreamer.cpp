@@ -28,6 +28,8 @@
 
 #include <NixPlatform/Platform.h>
 
+#include "debug-utils.h"
+
 typedef struct _WebKitWebAudioSrcClass   WebKitWebAudioSrcClass;
 typedef struct _WebKitWebAudioSourcePrivate WebKitWebAudioSourcePrivate;
 
@@ -96,7 +98,7 @@ static GstCaps* getGStreamerMonoAudioCaps(float sampleRate)
 #endif
 }
 
-#ifdef GST_API_VERSION_1
+//#ifdef GST_API_VERSION_1
 // XXX: From AudioBus.h (we don't have it), neeeded for the next function. Put this in a better place?
 enum {
     ChannelLeft = 0,
@@ -144,7 +146,7 @@ static GstAudioChannelPosition webKitWebAudioGStreamerChannelPosition(int channe
 
     return position;
 }
-#endif
+//#endif
 
 #define webkit_web_audio_src_parent_class parent_class
 G_DEFINE_TYPE_WITH_CODE(WebKitWebAudioSrc, webkit_web_audio_src, GST_TYPE_BIN, GST_DEBUG_CATEGORY_INIT(webkit_web_audio_src_debug, \
@@ -353,6 +355,8 @@ static void webKitWebAudioSrcGetProperty(GObject* object, guint propertyId, GVal
 
 static void webKitWebAudioSrcLoop(WebKitWebAudioSrc* src)
 {
+    PROFILE_BEGIN_FUNCTION
+
     WebKitWebAudioSourcePrivate* priv = src->priv;
 
     if (!priv->handler)
@@ -374,6 +378,7 @@ static void webKitWebAudioSrcLoop(WebKitWebAudioSrc* src)
 #endif
     }
 
+
     // FIXME: store audioData into priv???
     //const WebVector<float*>& sourceData, const WebVector<float*>& destinationData, size_t numberOfFrames) { };
     // FIXME: Add support for local/live audio input by passing sourceAudioData.
@@ -383,14 +388,20 @@ static void webKitWebAudioSrcLoop(WebKitWebAudioSrc* src)
     audioDataVector[1] = audioData[1];
     priv->handler->render(sourceDataVector, audioDataVector, priv->framesToPull);
 
-    for (int i = g_slist_length(priv->pads) - 1; i >= 0; i--) {
-        GstPad* pad = static_cast<GstPad*>(g_slist_nth_data(priv->pads, i));
-        GstBuffer* channelBuffer = static_cast<GstBuffer*>(g_slist_nth_data(channelBufferList, i));
+//    for (int i = g_slist_length(priv->pads) - 1; i >= 0; i--) {
+//        GstPad* pad = static_cast<GstPad*>(g_slist_nth_data(priv->pads, i));
+//        GstBuffer* channelBuffer = static_cast<GstBuffer*>(g_slist_nth_data(channelBufferList, i));
+    GSList* padsIt = priv->pads;
+    GSList* buffersIt = channelBufferList;
+    for (register int i = 0; padsIt && buffersIt; padsIt = g_slist_next(padsIt), buffersIt = g_slist_next(buffersIt), ++i) {
+        GstPad* pad = static_cast<GstPad*>(padsIt->data);
+        GstBuffer* channelBuffer = static_cast<GstBuffer*>(buffersIt->data);
 
 #ifndef GST_API_VERSION_1
         GstCaps* monoCaps = getGStreamerMonoAudioCaps(priv->sampleRate);
         GstStructure* structure = gst_caps_get_structure(monoCaps, 0);
-        GstAudioChannelPosition channelPosition = (i == 0) ? GST_AUDIO_CHANNEL_POSITION_FRONT_LEFT : GST_AUDIO_CHANNEL_POSITION_FRONT_RIGHT;
+//        GstAudioChannelPosition channelPosition = webKitWebAudioGStreamerChannelPosition(g_slist_index(channelBufferList, channelBuffer));
+        GstAudioChannelPosition channelPosition = webKitWebAudioGStreamerChannelPosition(i);
         gst_audio_set_channel_positions(structure, &channelPosition);
         gst_buffer_set_caps(channelBuffer, monoCaps);
 #endif
@@ -401,6 +412,8 @@ static void webKitWebAudioSrcLoop(WebKitWebAudioSrc* src)
     }
 
     g_slist_free(channelBufferList);
+
+    PROFILE_END_FUNCTION(2.0)
 }
 
 static GstStateChangeReturn webKitWebAudioSrcChangeState(GstElement* element, GstStateChange transition)
