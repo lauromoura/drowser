@@ -28,7 +28,7 @@
 
 #include <NixPlatform/Platform.h>
 
-#include "debug-utils.h"
+//#include "debug-utils.h"
 
 typedef struct _WebKitWebAudioSrcClass   WebKitWebAudioSrcClass;
 typedef struct _WebKitWebAudioSourcePrivate WebKitWebAudioSourcePrivate;
@@ -70,6 +70,11 @@ enum {
 
 static GstStaticPadTemplate srcTemplate = GST_STATIC_PAD_TEMPLATE("src",
                                                                   GST_PAD_SRC,
+                                                                  GST_PAD_ALWAYS,
+                                                                  GST_STATIC_CAPS("audio/x-wav"));
+
+static GstStaticPadTemplate sinkTemplate = GST_STATIC_PAD_TEMPLATE("sink",
+                                                                  GST_PAD_SINK,
                                                                   GST_PAD_ALWAYS,
                                                                   GST_STATIC_CAPS("audio/x-wav"));
 
@@ -160,6 +165,8 @@ static void webkit_web_audio_src_class_init(WebKitWebAudioSrcClass* webKitWebAud
     GstElementClass* elementClass = GST_ELEMENT_CLASS(webKitWebAudioSrcClass);
 
     gst_element_class_add_pad_template(elementClass, gst_static_pad_template_get(&srcTemplate));
+    gst_element_class_add_pad_template(elementClass, gst_static_pad_template_get(&sinkTemplate));
+
     gst_element_class_set_details_simple(elementClass,
                                          "WebKit WebAudio source element",
                                          "Source",
@@ -217,6 +224,7 @@ static void webkit_web_audio_src_init(WebKitWebAudioSrc* src)
     src->priv = priv;
     new (priv) WebKitWebAudioSourcePrivate();
 
+    // TODO Add sink pad here!!!
     priv->sourcePad = webkitGstGhostPadFromStaticTemplate(&srcTemplate, "src", 0);
     gst_element_add_pad(GST_ELEMENT(src), priv->sourcePad);
 
@@ -355,7 +363,7 @@ static void webKitWebAudioSrcGetProperty(GObject* object, guint propertyId, GVal
 
 static void webKitWebAudioSrcLoop(WebKitWebAudioSrc* src)
 {
-    PROFILE_BEGIN_FUNCTION
+    //PROFILE_BEGIN_FUNCTION
 
     WebKitWebAudioSourcePrivate* priv = src->priv;
 
@@ -388,9 +396,6 @@ static void webKitWebAudioSrcLoop(WebKitWebAudioSrc* src)
     audioDataVector[1] = audioData[1];
     priv->handler->render(sourceDataVector, audioDataVector, priv->framesToPull);
 
-//    for (int i = g_slist_length(priv->pads) - 1; i >= 0; i--) {
-//        GstPad* pad = static_cast<GstPad*>(g_slist_nth_data(priv->pads, i));
-//        GstBuffer* channelBuffer = static_cast<GstBuffer*>(g_slist_nth_data(channelBufferList, i));
     GSList* padsIt = priv->pads;
     GSList* buffersIt = channelBufferList;
     for (register int i = 0; padsIt && buffersIt; padsIt = g_slist_next(padsIt), buffersIt = g_slist_next(buffersIt), ++i) {
@@ -400,7 +405,6 @@ static void webKitWebAudioSrcLoop(WebKitWebAudioSrc* src)
 #ifndef GST_API_VERSION_1
         GstCaps* monoCaps = getGStreamerMonoAudioCaps(priv->sampleRate);
         GstStructure* structure = gst_caps_get_structure(monoCaps, 0);
-//        GstAudioChannelPosition channelPosition = webKitWebAudioGStreamerChannelPosition(g_slist_index(channelBufferList, channelBuffer));
         GstAudioChannelPosition channelPosition = webKitWebAudioGStreamerChannelPosition(i);
         gst_audio_set_channel_positions(structure, &channelPosition);
         gst_buffer_set_caps(channelBuffer, monoCaps);
@@ -413,7 +417,7 @@ static void webKitWebAudioSrcLoop(WebKitWebAudioSrc* src)
 
     g_slist_free(channelBufferList);
 
-    PROFILE_END_FUNCTION(2.0)
+    //PROFILE_END_FUNCTION(2.0)
 }
 
 static GstStateChangeReturn webKitWebAudioSrcChangeState(GstElement* element, GstStateChange transition)

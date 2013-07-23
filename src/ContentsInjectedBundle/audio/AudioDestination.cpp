@@ -37,6 +37,13 @@ AudioDestination::AudioDestination(size_t bufferSize, unsigned numberOfInputChan
     , m_pipeline(0)
     , m_sampleRate(sampleRate)
 {
+    GstElement* audioInputSrc = gst_element_factory_make("autoaudiosrc", 0);
+    if (!audioInputSrc) {
+        fprintf(stderr, "Error creating autoaudiosrc :(\n");
+        return;
+    }
+    fprintf(stderr, "Created autoaudiosrc :)\n");
+
     // FIXME: NUMBER OF CHANNELS NOT USED??????????/ WHY??????????
     m_pipeline = gst_pipeline_new("play");
 
@@ -56,8 +63,10 @@ AudioDestination::AudioDestination(size_t bufferSize, unsigned numberOfInputChan
 #ifndef GST_API_VERSION_1
     g_signal_connect(wavParser, "pad-added", G_CALLBACK(onGStreamerWavparsePadAddedCallback), this);
 #endif
-    gst_bin_add_many(GST_BIN(m_pipeline), webkitAudioSrc, wavParser, NULL);
+    gst_bin_add_many(GST_BIN(m_pipeline), audioInputSrc, webkitAudioSrc, wavParser, NULL);
+    gst_element_link_pads_full(audioInputSrc, "src", webkitAudioSrc, "sink", GST_PAD_LINK_CHECK_NOTHING);
     gst_element_link_pads_full(webkitAudioSrc, "src", wavParser, "sink", GST_PAD_LINK_CHECK_NOTHING);
+//    gst_element_sync_state_with_parent(audioInputSrc);
 
 #ifdef GST_API_VERSION_1
     GstPad* srcPad = gst_element_get_static_pad(wavParser, "src");
@@ -107,7 +116,7 @@ void AudioDestination::start()
 {
     if (!m_wavParserAvailable)
         return;
-
+    fprintf(stderr, "*** STARTDED NIX AUDIO!\n");
     gst_element_set_state(m_pipeline, GST_STATE_PLAYING);
 }
 
