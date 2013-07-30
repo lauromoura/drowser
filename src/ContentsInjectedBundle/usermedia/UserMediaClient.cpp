@@ -24,7 +24,7 @@
  */
 
 #include "UserMediaClient.h"
-#include <NixPlatform/WebUserMediaRequest.h>
+#include <NixPlatform/UserMediaRequest.h>
 
 #include <cstdio>
 
@@ -44,12 +44,12 @@ void UserMediaClient::pageDestroyed()
     delete this;
 }
 
-void UserMediaClient::requestUserMedia(const WebKit::WebUserMediaRequest& request, const WebKit::WebVector<WebKit::WebMediaStreamSource>& audioSources, const WebKit::WebVector<WebKit::WebMediaStreamSource>& videoSources)
+void UserMediaClient::requestUserMedia(const Nix::UserMediaRequest& request, const Nix::Vector<Nix::MediaStreamSource>& audioSources, const Nix::Vector<Nix::MediaStreamSource>& videoSources)
 {
     printf("[%s] %p -- audio: %d, video: %d\n", __PRETTY_FUNCTION__, this, request.audio(), request.video());
 }
 
-void UserMediaClient::cancelUserMediaRequest(const WebKit::WebUserMediaRequest& request)
+void UserMediaClient::cancelUserMediaRequest(const Nix::UserMediaRequest& request)
 {
     printf("[%s] %p -- audio: %d, video: %d\n", __PRETTY_FUNCTION__, this, request.audio(), request.video());
 }

@@ -26,15 +26,15 @@
 #ifndef UserMediaClient_h
 #define UserMediaClient_h
 
-#include <NixPlatform/WebUserMediaClient.h>
+#include <NixPlatform/UserMediaClient.h>
 
-class UserMediaClient : public WebKit::WebUserMediaClient {
+class UserMediaClient : public Nix::UserMediaClient {
 public:
     UserMediaClient();
 	virtual ~UserMediaClient();
     virtual void pageDestroyed();
-    virtual void requestUserMedia(const WebKit::WebUserMediaRequest&, const WebKit::WebVector<WebKit::WebMediaStreamSource>&, const WebKit::WebVector<WebKit::WebMediaStreamSource>&);
-    virtual void cancelUserMediaRequest(const WebKit::WebUserMediaRequest&);
+    virtual void requestUserMedia(const Nix::UserMediaRequest&, const Nix::Vector<Nix::MediaStreamSource>&, const Nix::Vector<Nix::MediaStreamSource>&);
+    virtual void cancelUserMediaRequest(const Nix::UserMediaRequest&);
 };
 
 #endif // UserMediaClient_h

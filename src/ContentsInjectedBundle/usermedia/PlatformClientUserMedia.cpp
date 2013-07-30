@@ -1,7 +1,7 @@
 #include "PlatformClient.h"
 #include "UserMediaClient.h"
 
-WebKit::WebUserMediaClient* PlatformClient::createUserMediaClient()
+Nix::UserMediaClient* PlatformClient::createUserMediaClient()
 {
     return new UserMediaClient();
 }

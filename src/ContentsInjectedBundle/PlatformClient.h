@@ -18,7 +18,7 @@ public:
     // Pass in (numberOfInputChannels > 0) if live/local audio input is desired.
     virtual Nix::AudioDevice* createAudioDevice(size_t bufferSize, unsigned numberOfInputChannels, unsigned numberOfChannels, double sampleRate, Nix::AudioDevice::RenderCallback* renderCallback);
 
-    virtual WebKit::WebUserMediaClient* createUserMediaClient();
+    virtual Nix::UserMediaClient* createUserMediaClient();
 
     // Resources -----------------------------------------------------------
     // Returns a blob of data corresponding to the named resource.
