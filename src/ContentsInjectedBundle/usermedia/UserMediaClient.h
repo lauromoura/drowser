@@ -33,7 +33,7 @@ public:
     UserMediaClient();
 	virtual ~UserMediaClient();
     virtual void pageDestroyed();
-    virtual void requestUserMedia(const Nix::UserMediaRequest&, const Nix::Vector<Nix::MediaStreamSource>&, const Nix::Vector<Nix::MediaStreamSource>&);
+    virtual void requestUserMedia(Nix::UserMediaRequest&, const Nix::Vector<Nix::MediaStreamSource>&, const Nix::Vector<Nix::MediaStreamSource>&);
     virtual void cancelUserMediaRequest(const Nix::UserMediaRequest&);
 };
 

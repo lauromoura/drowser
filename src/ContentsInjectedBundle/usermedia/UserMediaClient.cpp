@@ -24,9 +24,24 @@
  */
 
 #include "UserMediaClient.h"
+#include <NixPlatform/String.h>
 #include <NixPlatform/UserMediaRequest.h>
+#include <NixPlatform/MediaConstraints.h>
+#include <NixPlatform/MediaStream.h>
+#include <NixPlatform/MediaStreamSource.h>
+#include <NixPlatform/MediaStreamTrack.h>
 
 #include <cstdio>
+
+class BuzzerStreamSource : public Nix::MediaStreamSource
+{
+public:
+    BuzzerStreamSource()
+        : Nix::MediaStreamSource()
+    {
+
+    }
+};
 
 UserMediaClient::UserMediaClient()
 {
@@ -44,9 +59,29 @@ void UserMediaClient::pageDestroyed()
     delete this;
 }
 
-void UserMediaClient::requestUserMedia(const Nix::UserMediaRequest& request, const Nix::Vector<Nix::MediaStreamSource>& audioSources, const Nix::Vector<Nix::MediaStreamSource>& videoSources)
+void UserMediaClient::requestUserMedia(Nix::UserMediaRequest& request, const Nix::Vector<Nix::MediaStreamSource>& audioSources, const Nix::Vector<Nix::MediaStreamSource>& videoSources)
 {
     printf("[%s] %p -- audio: %d, video: %d\n", __PRETTY_FUNCTION__, this, request.audio(), request.video());
+    bool succeed = true;
+
+    Nix::MediaStream ms;
+    Nix::Vector<Nix::MediaStreamTrack> audioTracks;
+    Nix::Vector<Nix::MediaStreamTrack> videoTracks;
+
+    if (request.audio()) {
+        // Nix::MediaConstraints audioConstraints = request.audioConstraints(); // TODO: check constraints
+        // ms.initialize("MockAudioDevice#1", Nix::SourceInfo::SourceKindAudio, "Mock audio device", WebSourceInfo::VideoFacingModeNone);
+    }
+
+    if (request.video())
+        succeed = false;
+
+    ms.initialize(Nix::String("MockAudioDevice#1"), audioTracks, videoTracks);
+
+    if (succeed)
+        request.requestSucceeded(ms);
+    else
+        request.requestFailed();
 }
 
 void UserMediaClient::cancelUserMediaRequest(const Nix::UserMediaRequest& request)
