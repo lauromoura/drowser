@@ -51,6 +51,8 @@ struct _WebKitWebAudioSourcePrivate {
     GstElement* interleave; //FIXME: WILL LEAK!!!
     GstElement* wavEncoder; //FIXME: WILL LEAK!!!
 
+    GstElement* deinterleave;
+
     GstTask* task;
 #ifdef GST_API_VERSION_1
     GRecMutex mutex;
@@ -59,7 +61,9 @@ struct _WebKitWebAudioSourcePrivate {
 #endif
 
     GSList* pads; // List of queue sink pads. One queue for each planar audio channel.
+    GSList* inputPads; // List of queue->audioConverter src pads. One queue for each planar audio channel.
     GstPad* sourcePad; // src pad of the element, interleaved wav data is pushed to it.
+    GstPad* sinkPad; // sink pad of the element, interleaved wav data is pulled from it.
 };
 
 enum {
@@ -228,6 +232,9 @@ static void webkit_web_audio_src_init(WebKitWebAudioSrc* src)
     priv->sourcePad = webkitGstGhostPadFromStaticTemplate(&srcTemplate, "src", 0);
     gst_element_add_pad(GST_ELEMENT(src), priv->sourcePad);
 
+    priv->sinkPad = webkitGstGhostPadFromStaticTemplate(&sinkTemplate, "sink", 0);
+    gst_element_add_pad(GST_ELEMENT(src), priv->sinkPad);
+
     priv->handler = 0;
 
 #ifdef GST_API_VERSION_1
@@ -246,6 +253,7 @@ static void webKitWebAudioSrcConstructed(GObject* object)
     WebKitWebAudioSrc* src = WEBKIT_WEB_AUDIO_SRC(object);
     WebKitWebAudioSourcePrivate* priv = src->priv;
 
+    // Source pipeline
     priv->interleave = gst_element_factory_make("interleave", 0);
     priv->wavEncoder = gst_element_factory_make("wavenc", 0);
 
@@ -300,6 +308,43 @@ static void webKitWebAudioSrcConstructed(GObject* object)
     //FIXME: POSSIBLE LEAK!!!
     GstPad* targetPad = gst_element_get_static_pad(priv->wavEncoder, "src");
     gst_ghost_pad_set_target(GST_GHOST_PAD(priv->sourcePad), targetPad);
+
+
+    // FIXME Sink pipeline
+
+    priv->deinterleave = gst_element_factory_make("deinterleave", 0);
+
+    for (unsigned channelIndex = 0; channelIndex < 2; channelIndex++) {
+        GstElement* queue = gst_element_factory_make("queue", 0);
+        GstElement* capsfilter = gst_element_factory_make("capsfilter", 0);
+        GstElement* audioconvert = gst_element_factory_make("audioconvert", 0);
+
+        GstCaps* monoCaps = getGStreamerMonoAudioCaps(priv->sampleRate);
+
+#ifdef GST_API_VERSION_1
+        GstAudioInfo info;
+        gst_audio_info_from_caps(&info, monoCaps);
+        GST_AUDIO_INFO_POSITION(&info, 0) = webKitWebAudioGStreamerChannelPosition(channelIndex);
+        GstCaps* caps = gst_audio_info_to_caps(&info);
+        g_object_set(capsfilter, "caps", caps, NULL);
+#else
+        g_object_set(capsfilter, "caps", monoCaps, NULL);
+#endif
+
+        // Configure the queue for minimal latency.
+        g_object_set(queue, "max-size-buffers", static_cast<guint>(1), NULL);
+
+        GstPad* pad = gst_element_get_static_pad(audioconvert, "src");
+        priv->inputPads = g_slist_prepend(priv->inputPads, pad);
+
+        gst_bin_add_many(GST_BIN(src), queue, capsfilter, audioconvert, NULL);
+        gst_element_link_pads_full(priv->deinterleave, 0, queue, "sink", GST_PAD_LINK_CHECK_NOTHING);
+        gst_element_link_pads_full(queue, "src", capsfilter, "sink", GST_PAD_LINK_CHECK_NOTHING);
+        gst_element_link_pads_full(capsfilter, "src", audioconvert, "sink", GST_PAD_LINK_CHECK_NOTHING);
+
+    }
+    GstPad* sinkPad = gst_element_get_static_pad(priv->deinterleave, "sink");
+    gst_ghost_pad_set_target(GST_GHOST_PAD(priv->sinkPad), sinkPad);
 }
 
 static void webKitWebAudioSrcFinalize(GObject* object)
@@ -363,15 +408,64 @@ static void webKitWebAudioSrcGetProperty(GObject* object, guint propertyId, GVal
 
 static void webKitWebAudioSrcLoop(WebKitWebAudioSrc* src)
 {
+    printf("%s\n", __FUNCTION__);
     //PROFILE_BEGIN_FUNCTION
 
     WebKitWebAudioSourcePrivate* priv = src->priv;
-
     if (!priv->handler)
         return;
 
-    GSList* channelBufferList = 0;
+    // FIXME use same size for both?
     unsigned bufferSize = priv->framesToPull * sizeof(float);
+
+    // Allocate input buffers. They'll be used to pull data from the element sink pad and forward it to WebKit.
+    Nix::Vector<float*> sourceDataVector((size_t) 2);
+
+    GSList* inputBufferList = 0;
+    float** inputData = (float**) malloc(g_slist_length(priv->inputPads) * sizeof(float*));
+    for (int i = g_slist_length(priv->inputPads) - 1; i >= 0; i--) {
+        GstBuffer* channelBuffer = gst_buffer_new_and_alloc(bufferSize);
+        inputBufferList = g_slist_prepend(inputBufferList, channelBuffer);
+#ifdef GST_API_VERSION_1
+        GstMapInfo info;
+        gst_buffer_map(channelBuffer, &info, GST_MAP_READ);
+        inputData[i] = reinterpret_cast<float*>(info.data);
+        gst_buffer_unmap(channelBuffer, &info);
+#else
+        inputData[i] = reinterpret_cast<float*>(GST_BUFFER_DATA(channelBuffer));
+#endif
+    }
+
+    sourceDataVector[0] = inputData[0];
+    sourceDataVector[1] = inputData[1];
+
+    // FIXME Read from inputPad data
+    GSList* inputPadsIt = priv->inputPads;
+    GSList* inputBufferIt = inputBufferList;
+    for (register int i = 0; inputPadsIt && inputBufferIt; inputPadsIt = g_slist_next(inputPadsIt), inputBufferIt = g_slist_next(inputBufferIt), ++i) {
+        printf("reading input iters loop %d\n", i);
+        GstPad *pad = static_cast<GstPad*>(inputPadsIt->data);
+        GstBuffer* channelBuffer = static_cast<GstBuffer*>(inputBufferIt->data);
+
+#ifndef GST_API_VERSION_1
+        GstCaps* monoCaps = getGStreamerMonoAudioCaps(priv->sampleRate);
+        GstStructure* structure = gst_caps_get_structure(monoCaps, 0);
+        GstAudioChannelPosition channelPosition = webKitWebAudioGStreamerChannelPosition(i);
+        gst_audio_set_channel_positions(structure, &channelPosition);
+        gst_buffer_set_caps(channelBuffer, monoCaps);
+#endif
+        printf("getting range\n");
+        GstFlowReturn ret = gst_pad_get_range(pad, 0, bufferSize, &channelBuffer);
+        printf("got range range\n");
+        if (ret != GST_FLOW_OK)
+            GST_ELEMENT_ERROR(src, CORE, PAD, ("Internal WebAudioSrc error"), ("Failed to pull buffer on %s", GST_DEBUG_PAD_NAME(pad)));
+
+    }
+
+
+    // Allocate audioData buffers. They'll be used to pull data from WebKit and pass it to the Queue sinks which will
+    // forward to the element source pad.
+    GSList* channelBufferList = 0;
     float** audioData = (float**) malloc(g_slist_length(priv->pads) * sizeof(float*));
     for (int i = g_slist_length(priv->pads) - 1; i >= 0; i--) {
         GstBuffer* channelBuffer = gst_buffer_new_and_alloc(bufferSize);
@@ -386,16 +480,17 @@ static void webKitWebAudioSrcLoop(WebKitWebAudioSrc* src)
 #endif
     }
 
-
     // FIXME: store audioData into priv???
     //const WebVector<float*>& sourceData, const WebVector<float*>& destinationData, size_t numberOfFrames) { };
     // FIXME: Add support for local/live audio input by passing sourceAudioData.
-    Nix::Vector<float*> sourceDataVector;
     Nix::Vector<float*> audioDataVector((size_t) 2);
     audioDataVector[0] = audioData[0];
     audioDataVector[1] = audioData[1];
+
+    // Exchange data with WebKit
     priv->handler->render(sourceDataVector, audioDataVector, priv->framesToPull);
 
+    // Write rendered data back into GST buffers
     GSList* padsIt = priv->pads;
     GSList* buffersIt = channelBufferList;
     for (register int i = 0; padsIt && buffersIt; padsIt = g_slist_next(padsIt), buffersIt = g_slist_next(buffersIt), ++i) {
@@ -415,6 +510,7 @@ static void webKitWebAudioSrcLoop(WebKitWebAudioSrc* src)
             GST_ELEMENT_ERROR(src, CORE, PAD, ("Internal WebAudioSrc error"), ("Failed to push buffer on %s", GST_DEBUG_PAD_NAME(pad)));
     }
 
+    g_slist_free(inputBufferList);
     g_slist_free(channelBufferList);
 
     //PROFILE_END_FUNCTION(2.0)
