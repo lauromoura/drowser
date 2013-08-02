@@ -37,12 +37,18 @@ AudioDestination::AudioDestination(size_t bufferSize, unsigned numberOfInputChan
     , m_pipeline(0)
     , m_sampleRate(sampleRate)
 {
-    GstElement* audioInputSrc = gst_element_factory_make("autoaudiosrc", 0);
-    if (!audioInputSrc) {
-        fprintf(stderr, "Error creating autoaudiosrc :(\n");
+    GstElement* filesrc = gst_element_factory_make("filesrc", 0);
+    if (!filesrc) {
+        fprintf(stderr, "Error creating filesrc :(\n");
         return;
     }
-    fprintf(stderr, "Created autoaudiosrc :)\n");
+    fprintf(stderr, "Created filesrc :)\n");
+
+    GstElement* oggdemux = gst_element_factory_make("oggdemux", 0);
+    GstElement* vorbisdec = gst_element_factory_make("vorbisdec", 0);
+    GstElement* audioconvert = gst_element_factory_make("audioconvert", 0);
+
+    g_object_set(G_OBJECT(filesrc), "location", "sound.ogg", NULL);
 
     // FIXME: NUMBER OF CHANNELS NOT USED??????????/ WHY??????????
     m_pipeline = gst_pipeline_new("play");
@@ -63,10 +69,13 @@ AudioDestination::AudioDestination(size_t bufferSize, unsigned numberOfInputChan
 #ifndef GST_API_VERSION_1
     g_signal_connect(wavParser, "pad-added", G_CALLBACK(onGStreamerWavparsePadAddedCallback), this);
 #endif
-    gst_bin_add_many(GST_BIN(m_pipeline), audioInputSrc, webkitAudioSrc, wavParser, NULL);
-    gst_element_link_pads_full(audioInputSrc, "src", webkitAudioSrc, "sink", GST_PAD_LINK_CHECK_NOTHING);
+    gst_bin_add_many(GST_BIN(m_pipeline), filesrc, oggdemux, vorbisdec, audioconvert, webkitAudioSrc, wavParser, NULL);
+    gst_element_link_pads_full(filesrc, "src", oggdemux, "sink", GST_PAD_LINK_CHECK_NOTHING);
+    gst_element_link_pads_full(oggdemux, "src", vorbisdec, "sink", GST_PAD_LINK_CHECK_NOTHING);
+    gst_element_link_pads_full(vorbisdec, "src", audioconvert, "sink", GST_PAD_LINK_CHECK_NOTHING);
+    gst_element_link_pads_full(audioconvert, "src", webkitAudioSrc, "sink", GST_PAD_LINK_CHECK_NOTHING);
     gst_element_link_pads_full(webkitAudioSrc, "src", wavParser, "sink", GST_PAD_LINK_CHECK_NOTHING);
-//    gst_element_sync_state_with_parent(audioInputSrc);
+//    gst_element_sync_state_with_parent(filesrc);
 
 #ifdef GST_API_VERSION_1
     GstPad* srcPad = gst_element_get_static_pad(wavParser, "src");
